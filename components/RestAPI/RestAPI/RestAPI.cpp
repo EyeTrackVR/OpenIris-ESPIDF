@@ -4,6 +4,19 @@
 
 #define POST_METHOD "POST"
 
+bool getIsSuccess(const nlohmann::json &response)
+{
+  // since the commandManager will be returning CommandManagerResponse to simplify parsing on the clients end
+  // we can slightly its json representation, and extract the status from there
+  // note: This will only work for commands executed with CommandManager::executeFromType().
+  if (!response.contains("result"))
+  {
+    return false;
+  }
+
+  return response.at("result").at("status").get<std::string>() == "success";
+}
+
 RestAPI::RestAPI(std::string url, std::shared_ptr<CommandManager> commandManager) : command_manager(commandManager)
 {
   this->url = std::move(url);
@@ -84,66 +97,73 @@ void HandleRestAPIPollTask(void *pvParameter)
 
 // COMMANDS
 // updates
-void RestAPI::handle_update_wifi(RequestContext *context) {
+void RestAPI::handle_update_wifi(RequestContext *context)
+{
   if (context->method != POST_METHOD)
   {
     mg_http_reply(context->connection, 401, JSON_RESPONSE, "{%m:%m}", MG_ESC("error"), "Method not allowed");
     return;
   }
 
-  auto const result = command_manager->executeFromType(CommandType::UPDATE_WIFI, context->body);
-  auto const code = result.isSuccess() ? 200 : 500;
-  mg_http_reply(context->connection, code, JSON_RESPONSE, result.getResult().c_str());
+  const nlohmann::json result = command_manager->executeFromType(CommandType::UPDATE_WIFI, context->body);
+  const auto code = getIsSuccess(result) ? 200 : 400;
+  mg_http_reply(context->connection, code, JSON_RESPONSE, result.dump().c_str());
 }
 
-void RestAPI::handle_update_device(RequestContext *context) {
+void RestAPI::handle_update_device(RequestContext *context)
+{
   if (context->method != POST_METHOD)
   {
     mg_http_reply(context->connection, 401, JSON_RESPONSE, "{%m:%m}", MG_ESC("error"), "Method not allowed");
     return;
   }
 
-  auto const result = command_manager->executeFromType(CommandType::UPDATE_OTA_CREDENTIALS, context->body);
-  auto const  code = result.isSuccess() ? 200 : 500;
-  mg_http_reply(context->connection, code, JSON_RESPONSE, result.getResult().c_str());
+  const nlohmann::json result = command_manager->executeFromType(CommandType::UPDATE_OTA_CREDENTIALS, context->body);
+  const auto code = getIsSuccess(result) ? 200 : 500;
+  mg_http_reply(context->connection, code, JSON_RESPONSE, result.dump().c_str());
 }
 
-void RestAPI::handle_update_camera(RequestContext *context) {
+void RestAPI::handle_update_camera(RequestContext *context)
+{
   if (context->method != POST_METHOD)
   {
     mg_http_reply(context->connection, 401, JSON_RESPONSE, "{%m:%m}", MG_ESC("error"), "Method not allowed");
     return;
   }
 
-  auto const  result = command_manager->executeFromType(CommandType::UPDATE_CAMERA, context->body);
-  auto const  code = result.isSuccess() ? 200 : 500;
-  mg_http_reply(context->connection, code, JSON_RESPONSE, result.getResult().c_str());
+  const nlohmann::json result = command_manager->executeFromType(CommandType::UPDATE_CAMERA, context->body);
+  const auto code = getIsSuccess(result) ? 200 : 500;
+  mg_http_reply(context->connection, code, JSON_RESPONSE, result.dump().c_str());
 }
 
 // gets
 
-void RestAPI::handle_get_config(RequestContext *context) {
+void RestAPI::handle_get_config(RequestContext *context)
+{
   auto const result = this->command_manager->executeFromType(CommandType::GET_CONFIG, "");
-  mg_http_reply(context->connection, 200, JSON_RESPONSE, "{%m:%m}", MG_ESC("result"), result.getResult());
+  const nlohmann::json jsonResult = result;
+  mg_http_reply(context->connection, 200, JSON_RESPONSE, "{%m:%m}", MG_ESC("result"), jsonResult.dump().c_str());
 }
 
 // resets
 
-void RestAPI::handle_reset_config(RequestContext *context) {
+void RestAPI::handle_reset_config(RequestContext *context)
+{
   if (context->method != POST_METHOD)
   {
     mg_http_reply(context->connection, 401, JSON_RESPONSE, "{%m:%m}", MG_ESC("error"), "Method not allowed");
     return;
   }
 
-  auto const result = this->command_manager->executeFromType(CommandType::RESET_CONFIG, "{\"section\": \"all\"}");
-  auto const code = result.isSuccess() ? 200 : 500;
-  mg_http_reply(context->connection, code, JSON_RESPONSE, "{%m:%m}", MG_ESC("result"), result.getResult());
+  const nlohmann::json result = this->command_manager->executeFromType(CommandType::RESET_CONFIG, "{\"section\": \"all\"}");
+  const auto code = getIsSuccess(result) ? 200 : 500;
+  mg_http_reply(context->connection, code, JSON_RESPONSE, "{%m:%m}", MG_ESC("result"), result.dump().c_str());
 }
 
 // reboots
-void RestAPI::handle_reboot(RequestContext *context) {
-  auto const result = this->command_manager->executeFromType(CommandType::RESTART_DEVICE, "");
+void RestAPI::handle_reboot(RequestContext *context)
+{
+  const auto result = this->command_manager->executeFromType(CommandType::RESTART_DEVICE, "");
   mg_http_reply(context->connection, 200, JSON_RESPONSE, "{%m:%m}", MG_ESC("result"), "Ok");
 }
 
@@ -154,16 +174,18 @@ void RestAPI::handle_camera_reboot(RequestContext *context)
 
 // heartbeat
 
-void RestAPI::pong(RequestContext *context) {
-  auto const result = this->command_manager->executeFromType(CommandType::PING, "");
-  auto const code = result.isSuccess() ? 200 : 500;
-  mg_http_reply(context->connection, code, JSON_RESPONSE, result.getResult().c_str());
+void RestAPI::pong(RequestContext *context)
+{
+  const nlohmann::json result = this->command_manager->executeFromType(CommandType::PING, "");
+  const auto code = getIsSuccess(result) ? 200 : 500;
+  mg_http_reply(context->connection, code, JSON_RESPONSE, result.dump().c_str());
 }
 
 // special
 
-void RestAPI::handle_save(RequestContext *context) {
-  auto const result = this->command_manager->executeFromType(CommandType::SAVE_CONFIG, "");
-  auto const code = result.isSuccess() ? 200 : 500;
-  mg_http_reply(context->connection, code, JSON_RESPONSE, result.getResult().c_str());
+void RestAPI::handle_save(RequestContext *context)
+{
+  const nlohmann::json result = this->command_manager->executeFromType(CommandType::SAVE_CONFIG, "");
+  const auto code = getIsSuccess(result) ? 200 : 500;
+  mg_http_reply(context->connection, code, JSON_RESPONSE, result.dump().c_str());
 }

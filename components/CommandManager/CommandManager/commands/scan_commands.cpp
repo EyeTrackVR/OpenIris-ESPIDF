@@ -14,29 +14,24 @@ CommandResult scanNetworksCommand(std::shared_ptr<DependencyRegistry> registry)
 
     auto networks = wifiManager->ScanNetworks();
 
-    cJSON *root = cJSON_CreateObject();
-    cJSON *networksArray = cJSON_CreateArray();
-    cJSON_AddItemToObject(root, "networks", networksArray);
+    nlohmann::json result;
+    std::vector<nlohmann::json> networksJson;
 
     for (const auto &network : networks)
     {
-        cJSON *networkObject = cJSON_CreateObject();
-        cJSON_AddStringToObject(networkObject, "ssid", network.ssid.c_str());
-        cJSON_AddNumberToObject(networkObject, "channel", network.channel);
-        cJSON_AddNumberToObject(networkObject, "rssi", network.rssi);
+        nlohmann::json networkItem;
+        networkItem["ssid"] = network.ssid;
+        networkItem["channel"] = network.channel;
+        networkItem["rssi"] = network.rssi;
         char mac_str[18];
         sprintf(mac_str, "%02x:%02x:%02x:%02x:%02x:%02x",
                 network.mac[0], network.mac[1], network.mac[2],
                 network.mac[3], network.mac[4], network.mac[5]);
-        cJSON_AddStringToObject(networkObject, "mac_address", mac_str);
-        cJSON_AddNumberToObject(networkObject, "auth_mode", network.auth_mode);
-        cJSON_AddItemToArray(networksArray, networkObject);
+        networkItem["mac_address"] = mac_str;
+        networkItem["auth_mode"] = network.auth_mode;
+        networksJson.push_back(networkItem);
     }
 
-    char *json_string = cJSON_PrintUnformatted(root);
-    printf("%s\n", json_string);
-    cJSON_Delete(root);
-    free(json_string);
-
-    return CommandResult::getSuccessResult("Networks scanned");
+    result["networks"] = networksJson;
+    return CommandResult::getSuccessResult(result);
 }

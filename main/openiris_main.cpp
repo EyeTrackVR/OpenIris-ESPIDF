@@ -28,11 +28,15 @@
 #include <UVCStream.hpp>
 #endif
 
+// defines to configure nlohmann-json for esp32
+#define JSON_NO_IO 1
+#define JSON_NOEXCEPTION 1
+
 #ifdef CONFIG_LED_DEBUG_ENABLE
 #define BLINK_GPIO (gpio_num_t) CONFIG_LED_DEBUG_GPIO
 #else
 // Use an invalid / unused GPIO when debug LED disabled to avoid accidental toggles
-#define BLINK_GPIO (gpio_num_t) -1
+#define BLINK_GPIO (gpio_num_t) - 1
 #endif
 #define CONFIG_LED_C_PIN_GPIO (gpio_num_t) CONFIG_LED_EXTERNAL_GPIO
 
@@ -64,8 +68,8 @@ UVCStreamManager uvcStream;
 #endif
 
 auto ledManager = std::make_shared<LEDManager>(BLINK_GPIO, CONFIG_LED_C_PIN_GPIO, ledStateQueue, deviceConfig);
-auto *serialManager = new SerialManager(commandManager, &timerHandle, deviceConfig);
 std::shared_ptr<MonitoringManager> monitoringManager = std::make_shared<MonitoringManager>();
+auto *serialManager = new SerialManager(commandManager, &timerHandle);
 
 void startWiFiMode();
 void startWiredMode(bool shouldCloseSerialManager);
@@ -108,8 +112,8 @@ void launch_streaming()
     }
     else if (deviceMode == StreamingMode::SETUP)
     {
-    // we're still in setup, the user didn't select anything yet, let's give a bit of time for them to make a choice
-    ESP_LOGI("[MAIN]", "No mode was selected, staying in SETUP mode. WiFi streaming will be enabled still. \nPlease select another mode if you'd like.");
+        // we're still in setup, the user didn't select anything yet, let's give a bit of time for them to make a choice
+        ESP_LOGI("[MAIN]", "No mode was selected, staying in SETUP mode. WiFi streaming will be enabled still. \nPlease select another mode if you'd like.");
     }
     else
     {
@@ -211,7 +215,11 @@ void startWiFiMode()
     wifiManager->Begin();
     mdnsManager.start();
     restAPI->begin();
-
+    StreamingMode mode = deviceConfig->getDeviceMode();
+    if (mode == StreamingMode::WIFI)
+    {
+        streamServer.startStreamServer();
+    }
     xTaskCreate(
         HandleRestAPIPollTask,
         "HandleRestAPIPollTask",
@@ -260,11 +268,8 @@ extern "C" void app_main(void)
     dependencyRegistry->registerService<MonitoringManager>(DependencyType::monitoring_manager, monitoringManager);
 
     // add endpoint to check firmware version
-    // add firmware version somewhere
     // setup CI and building for other boards
-    // finish todos, overhaul stuff a bit
 
-    // todo - do we need logs over CDC? Or just commands and their results?
     // esp_log_set_vprintf(&websocket_logger);
     Logo::printASCII();
     initNVSStorage();

@@ -1,6 +1,8 @@
 idf_component_register(
   SRCS 
     "CommandManager/CommandManager.cpp"
+    "CommandManager/CommandResult.cpp"
+    "CommandManager/CommandSchema.cpp"
     "CommandManager/commands/simple_commands.cpp"
     "CommandManager/commands/camera_commands.cpp"
     "CommandManager/commands/wifi_commands.cpp"
@@ -11,5 +13,5 @@ idf_component_register(
   INCLUDE_DIRS
      "CommandManager"
      "CommandManager/commands"
-  REQUIRES ProjectConfig cJSON CameraManager OpenIrisTasks wifiManager Helpers LEDManager Monitoring
+  REQUIRES ProjectConfig nlohmann-json CameraManager OpenIrisTasks wifiManager Helpers LEDManager Monitoring
 )

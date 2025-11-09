@@ -4,17 +4,14 @@
 #include <memory>
 #include <string>
 #include <optional>
-#include <cJSON.h>
 #include "CommandResult.hpp"
 #include "CommandSchema.hpp"
 #include "DependencyRegistry.hpp"
 #include <CameraManager.hpp>
+#include <nlohmann-json.hpp>
 
-std::optional<UpdateCameraConfigPayload> parseUpdateCameraPayload(std::string_view jsonPayload);
-CommandResult updateCameraCommand(std::shared_ptr<DependencyRegistry> registry, std::string_view jsonPayload);
+CommandResult updateCameraCommand(std::shared_ptr<DependencyRegistry> registry, const nlohmann::json &json);
 
-std::optional<RestartCameraPayload> parseRestartCameraPayload(std::string_view jsonPayload);
-CommandResult restartCameraCommand(std::shared_ptr<DependencyRegistry> registry, std::string_view jsonPayload);
 #endif
 
 // add cropping command

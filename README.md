@@ -8,10 +8,11 @@ Firmware and tools for OpenIris — Wi‑Fi, UVC streaming, and a Python setup C
 ---
 
 ## What’s inside
+
 - ESP‑IDF firmware (C/C++) with modules for Camera, Wi‑Fi, UVC, REST/Serial commands, and more
 - Python tools for setup over USB serial:
   - `tools/switchBoardType.py` — choose a board profile (builds the right sdkconfig)
-  - `tools/openiris_setup.py` — interactive CLI for Wi‑Fi, MDNS/Name, Mode, LED PWM, Logs, and a Settings Summary
+  - `tools/setup_openiris.py` — interactive CLI for Wi‑Fi, MDNS/Name, Mode, LED PWM, Logs, and a Settings Summary
  - Composite USB (UVC + CDC) when UVC mode is enabled (`GENERAL_INCLUDE_UVC_MODE`) for simultaneous video streaming and command channel
  - LED current monitoring (if enabled via `MONITORING_LED_CURRENT`) with filtered mA readings
  - Configurable debug LED + external IR LED control with optional error mirroring (`LED_DEBUG_ENABLE`, `LED_EXTERNAL_AS_DEBUG`)
@@ -22,29 +23,36 @@ Firmware and tools for OpenIris — Wi‑Fi, UVC streaming, and a Python setup C
 ---
 
 ## First-time setup on Windows (VS Code + ESP‑IDF extension)
+
 If you’re starting fresh on Windows, this workflow is smooth and reliable:
 
-1) Install tooling
+1. Install tooling
+
 - Git: https://git-scm.com/downloads/win
 - Visual Studio Code: https://code.visualstudio.com/
 
-2) Get the source code
+2. Get the source code
+
 - Create a folder where you want the repo (e.g., `D:\OpenIris-ESPIDF\`). In File Explorer, right‑click the folder and choose “Open in Terminal”.
 - Clone and open in VS Code:
+
 ```cmd
 git clone https://github.com/lorow/OpenIris-ESPIDF.git
 cd OpenIris-ESPIDF
 code .
 ```
 
-3) Install the ESP‑IDF VS Code extension
+3. Install the ESP‑IDF VS Code extension
+
 - In VS Code, open the Extensions tab and install: https://marketplace.visualstudio.com/items?itemName=espressif.esp-idf-extension
 
-4) Set the default terminal profile to Command Prompt
+4. Set the default terminal profile to Command Prompt
+
 - Press Ctrl+Shift+P → search “Terminal: Select Default Profile” → choose “Command Prompt”.
 - Restart VS Code from its normal shortcut (not from Git Bash). This avoids running ESP‑IDF in the wrong shell.
 
-5) Configure ESP‑IDF in the extension
+5. Configure ESP‑IDF in the extension
+
 - On first launch, the extension may prompt to install ESP‑IDF and tools — follow the steps. It can take a while.
 - If you see the extension’s home page instead, click “Configure extension”, pick “EXPRESS”, choose “GitHub” as the server and version “v5.4.2”.
 - Then open the ESP‑IDF Explorer tab and click “Open ESP‑IDF Terminal”. We’ll use that for builds.
@@ -59,11 +67,14 @@ After this, you’re ready for the Quick start below.
 Boards are auto‑discovered from the `boards/` directory. First list them, then pick one:
 
 Windows (cmd):
+
 ```cmd
 python .\tools\switchBoardType.py --list
 python .\tools\switchBoardType.py --board seed_studio_xiao_esp32s3 --diff
 ```
+
 macOS/Linux (bash):
+
 ```bash
 python3 ./tools/switchBoardType.py --list
 python3 ./tools/switchBoardType.py --board seed_studio_xiao_esp32s3 --diff
@@ -75,28 +86,35 @@ Notes:
 - You can also pass partial or path‑like inputs (e.g. `facefocusvr/eye_L`), the tool normalizes them.
 
 ### 2) Build & flash
+
 - Set the target (e.g., ESP32‑S3).
 - Build, flash, and open the serial monitor.
  - (Optional) For UVC mode ensure `GENERAL_INCLUDE_UVC_MODE=y`. If you want device to boot directly into UVC: also set `START_IN_UVC_MODE=y`.
  - Disable Wi‑Fi services for pure wired builds: `GENERAL_ENABLE_WIRELESS=n`.
 
 ### 3) Use the Python setup CLI (recommended)
+
 Configure the device over USB serial.
 
 Before you run it:
+
 - If you still have the serial monitor open, close it (the port must be free).
 - In VS Code, open the sidebar “ESP‑IDF: Explorer” and click “Open ESP‑IDF Terminal”. We’ll run the CLI there so Python and packages are in the right environment.
 
 Then run:
+
 ```cmd
-python .\tools\openiris_setup.py --port COMxx
+python .\tools\setup_openiris.py --port COMxx
 ```
+
 Examples:
-- Windows: `python .\tools\openiris_setup.py --port COM69`, …
+
+- Windows: `python .\tools\setup_openiris.py --port COM69`, …
 - macOS: idk
 - Linux: idk
 
 What the CLI can do:
+
 - Wi‑Fi menu: automatic (scan → pick → password → connect → wait for IP) or manual (scan, show, configure, connect, status)
 - Set MDNS/Device name (also used for the UVC device name)
 - Switch mode (Wi‑Fi / UVC / Setup)
@@ -107,6 +125,7 @@ What the CLI can do:
 ---
 
 ## Serial number & MAC
+
 - Internally, the serial number is derived from the Wi‑Fi MAC address.
 - The CLI displays the MAC by default (clearer); it’s the value used as the serial number.
 - The UVC device name is based on the MDNS hostname.
@@ -121,6 +140,7 @@ Runtime override: If the setup CLI (or a JSON command) provides a new device nam
 ---
 
 ## Common workflows
+
 - Fast Wi‑Fi setup: in the CLI, go to “Wi‑Fi settings” → “Automatic setup”, then check “status”.
 - Change name/MDNS: set the device name in the CLI, then replug USB — UVC will show the new name.
 - Adjust brightness/LED: set LED PWM in the CLI.
@@ -132,6 +152,7 @@ Runtime override: If the setup CLI (or a JSON command) provides a new device nam
 ---
 
 ## Project layout (short)
+
 - `main/` — entry point
 - `components/` — modules (Camera, WiFi, UVC, CommandManager, …)
 - `tools/` — Python helper tools (board switch, setup CLI, scanner)
@@ -140,8 +161,10 @@ If you want to dig deeper: commands are mapped via the `CommandManager` under `c
 
 ---
 
+## Troubleshooting
+
 ### USB Composite (UVC + CDC)
-When UVC support is compiled in the device enumerates as a composite USB device:
+When UVC support is compiled in, the device enumerates as a composite USB device:
 - UVC interface: video streaming (JPEG frames)
 - CDC (virtual COM): command channel accepting newline‑terminated JSON objects
 

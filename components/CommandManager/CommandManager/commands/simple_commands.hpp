@@ -3,12 +3,11 @@
 
 #include <string>
 #include "CommandResult.hpp"
-#include "CommandSchema.hpp"
 #include "main_globals.hpp"
 #include "esp_log.h"
-#include <cJSON.h>
+#include <nlohmann-json.hpp>
 
 CommandResult PingCommand();
-CommandResult PauseCommand(std::string_view jsonPayload);
+CommandResult PauseCommand(const nlohmann::json &json);
 
 #endif
