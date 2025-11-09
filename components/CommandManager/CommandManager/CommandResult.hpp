@@ -1,9 +1,13 @@
+#pragma once
 #ifndef COMMAND_RESULT
 #define COMMAND_RESULT
 
 #include <format>
 #include <string>
 #include <algorithm>
+#include <nlohmann-json.hpp>
+
+using json = nlohmann::json;
 
 class CommandResult
 {
@@ -15,60 +19,41 @@ public:
   };
 
 private:
+  nlohmann::json data;
   Status status;
-  std::string message;
 
 public:
-  CommandResult(std::string message, const Status status)
-  {
-    this->status = status;
-
-    // Escape quotes and backslashes in the message for JSON
-    std::string escapedMessage = message;
-    size_t pos = 0;
-    // First escape backslashes
-    while ((pos = escapedMessage.find('\\', pos)) != std::string::npos) {
-      escapedMessage.replace(pos, 1, "\\\\");
-      pos += 2;
-    }
-    // Then escape quotes
-    pos = 0;
-    while ((pos = escapedMessage.find('"', pos)) != std::string::npos) {
-      escapedMessage.replace(pos, 1, "\\\"");
-      pos += 2;
-    }
-
-    if (status == Status::SUCCESS)
-    {
-      this->message = std::format("{{\"result\":\"{}\"}}", escapedMessage);
-    }
-    else
-    {
-      this->message = std::format("{{\"error\":\"{}\"}}", escapedMessage);
-    }
-  }
+  CommandResult(nlohmann::json data, const Status status) : data(data), status(status) {}
 
   bool isSuccess() const { return status == Status::SUCCESS; }
 
-  static CommandResult getSuccessResult(const std::string &message)
+  static CommandResult getSuccessResult(nlohmann::json message)
   {
     return CommandResult(message, Status::SUCCESS);
   }
 
-  static CommandResult getErrorResult(const std::string &message)
+  static CommandResult getErrorResult(nlohmann::json message)
   {
     return CommandResult(message, Status::FAILURE);
   }
 
-  // Create a result that returns raw JSON without wrapper
-  static CommandResult getRawJsonResult(const std::string &jsonMessage)
-  {
-    CommandResult result("", Status::SUCCESS);
-    result.message = jsonMessage;
-    return result;
-  }
-
-  std::string getResult() const { return this->message; }
+  nlohmann::json getData() const { return this->data; }
 };
+
+void to_json(nlohmann::json &j, const CommandResult &result);
+void from_json(const nlohmann::json &j, CommandResult &result);
+
+class CommandManagerResponse
+{
+private:
+  nlohmann::json data;
+
+public:
+  CommandManagerResponse(nlohmann::json data) : data(data) {}
+  nlohmann::json getData() const { return this->data; }
+};
+
+void to_json(nlohmann::json &j, const CommandManagerResponse &result);
+void from_json(const nlohmann::json &j, CommandManagerResponse &result);
 
 #endif

@@ -4,9 +4,9 @@
 #include "CommandResult.hpp"
 #include "DependencyRegistry.hpp"
 #include "esp_log.h"
-#include <cJSON.h>
 #include <wifiManager.hpp>
 #include <string>
+#include <nlohmann-json.hpp>
 
 CommandResult scanNetworksCommand(std::shared_ptr<DependencyRegistry> registry);
 

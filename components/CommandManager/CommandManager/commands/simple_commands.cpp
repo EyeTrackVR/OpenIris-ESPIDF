@@ -7,27 +7,19 @@ CommandResult PingCommand()
   return CommandResult::getSuccessResult("pong");
 };
 
-CommandResult PauseCommand(std::string_view jsonPayload)
+CommandResult PauseCommand(const nlohmann::json &json)
 {
-  PausePayload payload;
-  // pause by default if this command gets executed, even if the payload was invalid
-  payload.pause = true;
+  auto pause = true;
 
-  cJSON *root = cJSON_Parse(std::string(jsonPayload).c_str());
-  if (root)
+  if (json.contains("pause") && json["pause"].is_boolean())
   {
-    cJSON *pauseItem = cJSON_GetObjectItem(root, "pause");
-    if (pauseItem && cJSON_IsBool(pauseItem))
-    {
-      payload.pause = cJSON_IsTrue(pauseItem);
-    }
-    cJSON_Delete(root);
+    pause = json["pause"].get<bool>();
   }
 
-  ESP_LOGI(TAG, "Pause command received: %s", payload.pause ? "true" : "false");
+  ESP_LOGI(TAG, "Pause command received: %s", pause ? "true" : "false");
 
-  setStartupPaused(payload.pause);
-  if (payload.pause)
+  setStartupPaused(pause);
+  if (pause)
   {
     ESP_LOGI(TAG, "Startup paused - device will remain in configuration mode");
     return CommandResult::getSuccessResult("Startup paused");

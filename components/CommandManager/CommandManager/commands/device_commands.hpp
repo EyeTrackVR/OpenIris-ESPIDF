@@ -3,22 +3,22 @@
 #include "OpenIrisTasks.hpp"
 #include "DependencyRegistry.hpp"
 #include "esp_timer.h"
-#include "cJSON.h"
 #include "main_globals.hpp"
 
 #include <format>
 #include <string>
+#include <nlohmann-json.hpp>
 
-CommandResult updateOTACredentialsCommand(std::shared_ptr<DependencyRegistry> registry, std::string_view jsonPayload);
+CommandResult updateOTACredentialsCommand(std::shared_ptr<DependencyRegistry> registry, const nlohmann::json &json);
 
-CommandResult updateLEDDutyCycleCommand(std::shared_ptr<DependencyRegistry> registry, std::string_view jsonPayload);
+CommandResult updateLEDDutyCycleCommand(std::shared_ptr<DependencyRegistry> registry, const nlohmann::json &json);
 CommandResult getLEDDutyCycleCommand(std::shared_ptr<DependencyRegistry> registry);
 
 CommandResult restartDeviceCommand();
 
 CommandResult startStreamingCommand();
 
-CommandResult switchModeCommand(std::shared_ptr<DependencyRegistry> registry, std::string_view jsonPayload);
+CommandResult switchModeCommand(std::shared_ptr<DependencyRegistry> registry, const nlohmann::json &json);
 
 CommandResult getDeviceModeCommand(std::shared_ptr<DependencyRegistry> registry);
 

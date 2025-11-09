@@ -18,7 +18,7 @@
 #include "commands/wifi_commands.hpp"
 #include "commands/device_commands.hpp"
 #include "commands/scan_commands.hpp"
-#include <cJSON.h>
+#include <nlohmann-json.hpp>
 
 enum class CommandType
 {
@@ -33,7 +33,6 @@ enum class CommandType
   SET_MDNS,
   GET_MDNS_NAME,
   UPDATE_CAMERA,
-  RESTART_CAMERA,
   SAVE_CONFIG,
   GET_CONFIG,
   RESET_CONFIG,
@@ -57,10 +56,10 @@ class CommandManager
 
 public:
   explicit CommandManager(const std::shared_ptr<DependencyRegistry> &DependencyRegistry) : registry(DependencyRegistry) {};
-  std::function<CommandResult()> createCommand(CommandType type, std::string_view json) const;
+  std::function<CommandResult()> createCommand(const CommandType type, const nlohmann::json &json) const;
 
-  CommandResult executeFromJson(std::string_view json) const;
-  CommandResult executeFromType(CommandType type, std::string_view json) const;
+  CommandManagerResponse executeFromJson(std::string_view json) const;
+  CommandManagerResponse executeFromType(CommandType type, std::string_view json) const;
 };
 
 #endif

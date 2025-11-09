@@ -12,7 +12,6 @@ std::unordered_map<std::string, CommandType> commandTypeMap = {
     {"set_mdns", CommandType::SET_MDNS},
     {"get_mdns_name", CommandType::GET_MDNS_NAME},
     {"update_camera", CommandType::UPDATE_CAMERA},
-    {"restart_camera", CommandType::RESTART_CAMERA},
     {"save_config", CommandType::SAVE_CONFIG},
     {"get_config", CommandType::GET_CONFIG},
     {"reset_config", CommandType::RESET_CONFIG},
@@ -30,15 +29,13 @@ std::unordered_map<std::string, CommandType> commandTypeMap = {
   {"get_who_am_i", CommandType::GET_WHO_AM_I},
 };
 
-std::function<CommandResult()> CommandManager::createCommand(const CommandType type, std::string_view json) const
+std::function<CommandResult()> CommandManager::createCommand(const CommandType type, const nlohmann::json &json) const
 {
   switch (type)
   {
   case CommandType::PING:
     return {PingCommand};
   case CommandType::PAUSE:
-    return [json]
-    { return PauseCommand(json); };
     return [json]
     { return PauseCommand(json); };
   case CommandType::UPDATE_OTA_CREDENTIALS:
@@ -65,9 +62,6 @@ std::function<CommandResult()> CommandManager::createCommand(const CommandType t
   case CommandType::UPDATE_CAMERA:
     return [this, json]
     { return updateCameraCommand(this->registry, json); };
-  case CommandType::RESTART_CAMERA:
-    return [this, json]
-    { return restartCameraCommand(this->registry, json); };
   case CommandType::GET_CONFIG:
     return [this]
     { return getConfigCommand(this->registry); };
@@ -116,70 +110,56 @@ std::function<CommandResult()> CommandManager::createCommand(const CommandType t
   }
 }
 
-CommandResult CommandManager::executeFromJson(const std::string_view json) const
+CommandManagerResponse CommandManager::executeFromJson(const std::string_view json) const
 {
-  cJSON *parsedJson = cJSON_Parse(json.data());
-  if (parsedJson == nullptr)
-    return CommandResult::getErrorResult("Initial JSON Parse: Invalid JSON");
-
-  const cJSON *commandData = nullptr;
-  const cJSON *commands = cJSON_GetObjectItem(parsedJson, "commands");
-  cJSON *responseDocument = cJSON_CreateObject();
-  cJSON *responses = cJSON_CreateArray();
-  cJSON *response = nullptr;
-
-  cJSON_AddItemToObject(responseDocument, "results", responses);
-
-  if (cJSON_GetArraySize(commands) == 0)
+  if (!nlohmann::json::accept(json))
   {
-    cJSON_Delete(parsedJson);
-    return CommandResult::getErrorResult("Commands missing");
+    return CommandManagerResponse(nlohmann::json{{"error", "Initial JSON Parse - Invalid JSON"}});
   }
 
-  cJSON_ArrayForEach(commandData, commands)
+  nlohmann::json parsedJson = nlohmann::json::parse(json);
+  if (!parsedJson.contains("commands") || !parsedJson["commands"].is_array() || parsedJson["commands"].empty())
   {
-    const cJSON *commandTypeString = cJSON_GetObjectItem(commandData, "command");
-    if (commandTypeString == nullptr)
-    {
-      return CommandResult::getErrorResult("Unknown command - missing command type");
-    }
-
-    const cJSON *commandPayload = cJSON_GetObjectItem(commandData, "data");
-    const auto commandType = commandTypeMap.at(std::string(commandTypeString->valuestring));
-
-    std::string commandPayloadString;
-    if (commandPayload != nullptr)
-      commandPayloadString = std::string(cJSON_Print(commandPayload));
-
-    auto command = createCommand(commandType, commandPayloadString);
-    if (command == nullptr)
-    {
-      cJSON_Delete(parsedJson);
-      return CommandResult::getErrorResult("Unknown command");
-    }
-    response = cJSON_CreateString(command().getResult().c_str());
-    cJSON_AddItemToArray(responses, response);
+    return CommandManagerResponse(CommandResult::getErrorResult("Commands missing"));
   }
 
-  char *jsonString = cJSON_Print(responseDocument);
-  cJSON_Delete(responseDocument);
-  cJSON_Delete(parsedJson);
+  nlohmann::json results = nlohmann::json::array();
 
-  // Return the JSON response directly without wrapping it
-  // The responseDocument already contains the proper format: {"results": [...]}
-  CommandResult result = CommandResult::getRawJsonResult(jsonString);
-  free(jsonString);
-  return result;
+  for (auto &commandObject : parsedJson["commands"].items())
+  {
+    auto commandData = commandObject.value();
+    if (!commandData.contains("command"))
+    {
+      return CommandManagerResponse({{"command", "Unknown command"}, {"error", "Missing command type"}});
+    }
+
+    const auto commandName = commandData["command"].get<std::string>();
+    if (!commandTypeMap.contains(commandName))
+    {
+      return CommandManagerResponse({{"command", commandName}, {"error", "Unknown command"}});
+    }
+
+    const auto commandType = commandTypeMap.at(commandName);
+    const auto commandPayload = commandData.contains("data") ? commandData["data"] : nlohmann::json::object();
+
+    auto command = createCommand(commandType, commandPayload);
+    results.push_back({
+        {"command", commandName},
+        {"result", command()},
+    });
+  }
+  auto response = nlohmann::json{{"results", results}};
+  return CommandManagerResponse(response);
 }
 
-CommandResult CommandManager::executeFromType(const CommandType type, const std::string_view json) const
+CommandManagerResponse CommandManager::executeFromType(const CommandType type, const std::string_view json) const
 {
   const auto command = createCommand(type, json);
 
   if (command == nullptr)
   {
-    return CommandResult::getErrorResult("Unknown command");
+    return CommandManagerResponse({{"command", type}, {"error", "Unknown command"}});
   }
 
-  return command();
+  return CommandManagerResponse({"result", command()});
 }

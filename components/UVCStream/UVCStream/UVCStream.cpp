@@ -65,7 +65,6 @@ static esp_err_t UVCStreamHelpers::camera_start_cb(uvc_format_t format, int widt
   }
 
   cameraHandler->setCameraResolution(frame_size);
-  cameraHandler->resetCamera(false);
 
   constexpr SystemEvent event = {EventSource::STREAM, StreamState_e::Stream_ON};
   xQueueSend(eventQueue, &event, 10);
