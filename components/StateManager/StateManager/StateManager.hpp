@@ -14,6 +14,7 @@ enum class LEDStates_e
   LedStateStreaming,      // Active streaming (UVC or WiFi) – steady ON
   LedStateStoppedStreaming, // Streaming stopped intentionally – steady OFF (could differentiate later)
   CameraError,            // Camera init / runtime failure – double blink pattern
+  CameraDataError,        // Repeated NO-SOI (JPEG start marker missing) – distinct rapid pattern
   WiFiStateError,         // WiFi connection error – distinctive blink sequence
   WiFiStateConnecting,    // WiFi association / DHCP pending – slow blink
   WiFiStateConnected      // WiFi connected (momentary confirmation burst)
