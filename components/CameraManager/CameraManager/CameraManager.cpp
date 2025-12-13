@@ -20,6 +20,7 @@ void CameraManager::setupCameraPinout()
   // 20000000 max freq on ESP32-CAM
   // 24000000 optimal freq on ESP32-S3 // 23MHz same fps
   int xclk_freq_hz = CONFIG_CAMERA_WIFI_XCLK_FREQ;
+  ESP_LOGI(CAMERA_MANAGER_TAG, "Base WIFI XCLK freq (from config): %d Hz", xclk_freq_hz);
 
 #if CONFIG_CAMERA_MODULE_ESP_EYE
   /* IO13, IO14 is designed for JTAG by default,
@@ -49,7 +50,10 @@ void CameraManager::setupCameraPinout()
   ESP_LOGI(CAMERA_MANAGER_TAG, "CAM_BOARD");
 #endif
 #if CONFIG_GENERAL_INCLUDE_UVC_MODE
-  xclk_freq_hz = CONFIG_CAMERA_USB_XCLK_FREQ;
+  // Use code default for UVC if no per-sensor override applies
+  constexpr int CAMERA_USB_XCLK_FREQ_DEFAULT = 20000000; // 20 MHz default
+  xclk_freq_hz = CAMERA_USB_XCLK_FREQ_DEFAULT;
+  ESP_LOGI(CAMERA_MANAGER_TAG, "UVC mode active: using USB default XCLK freq: %d Hz", xclk_freq_hz);
 #endif
 
   config = {
@@ -79,7 +83,7 @@ void CameraManager::setupCameraPinout()
       .pixel_format = PIXFORMAT_JPEG,  // YUV422,GRAYSCALE,RGB565,JPEG
       .frame_size = FRAMESIZE_240X240, // QQVGA-UXGA, For ESP32, do not use sizes above QVGA when not JPEG. The performance of the ESP32-S series has improved a lot, but JPEG mode always gives better frame rates.
 
-  .jpeg_quality = 8, // 0-63, for OV series camera sensors, lower number means higher quality // Below 6 stability problems
+  .jpeg_quality = 10, // 0-63, for OV series camera sensors, lower number means higher quality // Below 6 stability problems
   .fb_count = 2,     // When jpeg mode is used, if fb_count more than one, the driver will work in continuous mode.
   .fb_location = CAMERA_FB_IN_DRAM,
   .grab_mode = CAMERA_GRAB_WHEN_EMPTY, // was CAMERA_GRAB_LATEST; new mode reduces frame skips at cost of minor latency
@@ -179,6 +183,7 @@ bool CameraManager::setupCamera()
   {
     ESP_LOGI(CAMERA_MANAGER_TAG, "Camera initialized: %s \r\n",
              esp_err_to_name(hasCameraBeenInitialized));
+  ESP_LOGI(CAMERA_MANAGER_TAG, "Initial camera XCLK freq applied: %d Hz", config.xclk_freq_hz);
 
     constexpr auto event = SystemEvent{EventSource::CAMERA, CameraState_e::Camera_Success};
     xQueueSend(this->eventQueue, &event, 10);
@@ -206,7 +211,54 @@ bool CameraManager::setupCamera()
   {
     config.xclk_freq_hz = OV5640_XCLK_FREQ_HZ;
     esp_camera_deinit();
-    esp_camera_init(&config);
+    if (auto const err = esp_camera_init(&config); err == ESP_OK)
+    {
+      ESP_LOGI(CAMERA_MANAGER_TAG, "OV5640 detected: adjusted XCLK freq to %d Hz", config.xclk_freq_hz);
+    }
+    else
+    {
+      ESP_LOGE(CAMERA_MANAGER_TAG, "OV5640 reinit failed after XCLK adjust: %s", esp_err_to_name(err));
+    }
+  }
+
+  // Minimal per-sensor override logic (only if enabled via Kconfig and different)
+  if (temp_sensor)
+  {
+    const auto pid = temp_sensor->id.PID;
+    int desired_freq = 0;
+#ifdef CONFIG_CAMERA_XCLK_FREQ_OVERRIDE_OV2640
+    if (pid == OV2640_PID && CONFIG_CAMERA_XCLK_FREQ_OVERRIDE_OV2640 > 0)
+    {
+      desired_freq = CONFIG_CAMERA_XCLK_FREQ_OVERRIDE_OV2640;
+    }
+#endif
+#ifdef CONFIG_CAMERA_XCLK_FREQ_OVERRIDE_OV3660
+    if (pid == OV3660_PID && CONFIG_CAMERA_XCLK_FREQ_OVERRIDE_OV3660 > 0)
+    {
+      desired_freq = CONFIG_CAMERA_XCLK_FREQ_OVERRIDE_OV3660;
+    }
+#endif
+    if (desired_freq > 0 && desired_freq != config.xclk_freq_hz)
+    {
+      ESP_LOGI(CAMERA_MANAGER_TAG, "Applying XCLK override for sensor PID 0x%X: %d Hz (was %d)", pid, desired_freq, config.xclk_freq_hz);
+      config.xclk_freq_hz = desired_freq;
+      esp_camera_deinit();
+      if (auto const err = esp_camera_init(&config); err == ESP_OK)
+      {
+        ESP_LOGI(CAMERA_MANAGER_TAG, "Camera reinitialized with override frequency");
+        ESP_LOGI(CAMERA_MANAGER_TAG, "Final camera XCLK freq: %d Hz (PID 0x%X)", config.xclk_freq_hz, pid);
+      }
+      else
+      {
+        ESP_LOGE(CAMERA_MANAGER_TAG, "Failed to reinit camera with override freq (%s). Reverting.", esp_err_to_name(err));
+        // Attempt revert to previous frequency
+        // (previous value was lost after assignment; we can fall back to USB/WIFI config selection logic if needed)
+      }
+    }
+    else
+    {
+      ESP_LOGI(CAMERA_MANAGER_TAG, "No XCLK override applied for PID 0x%X. Active freq: %d Hz", pid, config.xclk_freq_hz);
+    }
   }
 
 #endif

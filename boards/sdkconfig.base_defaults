@@ -579,7 +579,6 @@ CONFIG_GENERAL_VERSION="0.0.1"
 #
 # OpenIris: Camera Configuration
 #
-CONFIG_CAMERA_USB_XCLK_FREQ=23000000
 CONFIG_CAMERA_WIFI_XCLK_FREQ=16500000
 # end of OpenIris: Camera Configuration
 
