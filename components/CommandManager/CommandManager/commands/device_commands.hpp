@@ -19,6 +19,7 @@ CommandResult restartDeviceCommand();
 CommandResult startStreamingCommand();
 
 CommandResult switchModeCommand(std::shared_ptr<DependencyRegistry> registry, const nlohmann::json &json);
+CommandResult switchModeAndRestartCommand(std::shared_ptr<DependencyRegistry> registry, const nlohmann::json &json);
 
 CommandResult getDeviceModeCommand(std::shared_ptr<DependencyRegistry> registry);
 

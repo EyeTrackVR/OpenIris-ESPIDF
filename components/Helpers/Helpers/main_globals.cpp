@@ -3,6 +3,8 @@
 
 // used to force starting the stream setup process via commands
 extern void force_activate_streaming();
+// used to start just the stream server without mode changes
+extern void force_start_stream_server();
 
 static bool s_startupCommandReceived = false;
 bool getStartupCommandReceived()
@@ -31,6 +33,12 @@ void setStartupPaused(bool startupPaused)
 void activateStreaming(void *arg)
 {
     force_activate_streaming();
+}
+
+// Function to start just the stream server
+void startStreamServerOnly()
+{
+    force_start_stream_server();
 }
 
 // USB handover state

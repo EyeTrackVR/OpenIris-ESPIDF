@@ -21,6 +21,7 @@ std::unordered_map<std::string, CommandType> commandTypeMap = {
     {"get_wifi_status", CommandType::GET_WIFI_STATUS},
     {"connect_wifi", CommandType::CONNECT_WIFI},
     {"switch_mode", CommandType::SWITCH_MODE},
+    {"switch_mode_and_restart", CommandType::SWITCH_MODE_AND_RESTART},
     {"get_device_mode", CommandType::GET_DEVICE_MODE},
     {"set_led_duty_cycle", CommandType::SET_LED_DUTY_CYCLE},
     {"get_led_duty_cycle", CommandType::GET_LED_DUTY_CYCLE},
@@ -87,6 +88,9 @@ std::function<CommandResult()> CommandManager::createCommand(const CommandType t
   case CommandType::SWITCH_MODE:
     return [this, json]
     { return switchModeCommand(this->registry, json); };
+  case CommandType::SWITCH_MODE_AND_RESTART:
+    return [this, json]
+    { return switchModeAndRestartCommand(this->registry, json); };
   case CommandType::GET_DEVICE_MODE:
     return [this]
     { return getDeviceModeCommand(this->registry); };

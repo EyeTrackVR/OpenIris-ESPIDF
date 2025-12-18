@@ -113,14 +113,14 @@ void CameraManager::setupCameraSensor()
                                    0);              // 0 = disable , 1 = enable
   camera_sensor->set_aec2(camera_sensor, 0);        // 0 = disable , 1 = enable
   camera_sensor->set_ae_level(camera_sensor, 0);    // -2 to 2
-  camera_sensor->set_aec_value(camera_sensor, 300); // 0 to 1200
+  camera_sensor->set_aec_value(camera_sensor, 600); // 0 to 1200
 
   // controls the gain
   camera_sensor->set_gain_ctrl(camera_sensor, 0); // 0 = disable , 1 = enable
 
   // automatic gain control gain, controls by how much the resulting image
   // should be amplified
-  camera_sensor->set_agc_gain(camera_sensor, 2);                                // 0 to 30
+  camera_sensor->set_agc_gain(camera_sensor, 0);                                // 0 to 30
   camera_sensor->set_gainceiling(camera_sensor, static_cast<gainceiling_t>(6)); // 0 to 6
 
   // black and white pixel correction, averages the white and black spots
@@ -132,7 +132,7 @@ void CameraManager::setupCameraSensor()
   // gamma correction
   camera_sensor->set_raw_gma(
       camera_sensor,
-      1); // 0 = disable , 1 = enable (makes much lighter and noisy)
+      0); // 0 = disable , 1 = enable (makes much lighter and noisy)
 
   camera_sensor->set_lenc(camera_sensor, 0); // 0 = disable , 1 = enable // 0 =
                                              // disable , 1 = enable
