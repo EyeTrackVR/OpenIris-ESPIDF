@@ -11,6 +11,9 @@
 // so that the serial manager has time to return the response
 void activateStreaming(void *arg);
 
+// Starts only the stream server (used by startStreamingCommand in SETUP mode)
+void startStreamServerOnly();
+
 bool getStartupCommandReceived();
 void setStartupCommandReceived(bool startupCommandReceived);
 

@@ -101,20 +101,10 @@ CommandResult getLEDDutyCycleCommand(std::shared_ptr<DependencyRegistry> registr
 
 CommandResult startStreamingCommand()
 {
-    // since we're trying to kill the serial handler
-    // from *inside* the serial handler, we'd deadlock.
-    // we can just pass nullptr to the vtaskdelete(),
-    // but then we won't get any response, so we schedule a timer instead
-    esp_timer_create_args_t args{
-        .callback = activateStreaming,
-        .arg = nullptr,
-        .name = "activateStreaming"};
-
-    esp_timer_handle_t activateStreamingTimer;
-    esp_timer_create(&args, &activateStreamingTimer);
-    esp_timer_start_once(activateStreamingTimer, pdMS_TO_TICKS(150));
-    // streamServer.startStreamServer();
-    return CommandResult::getSuccessResult("Streaming starting");
+    // Start the stream server directly without going through mode-based logic
+    // This allows starting streaming in SETUP mode without changing modes
+    startStreamServerOnly();
+    return CommandResult::getSuccessResult("Streaming started");
 }
 
 CommandResult switchModeCommand(std::shared_ptr<DependencyRegistry> registry, const nlohmann::json &json)
@@ -152,6 +142,51 @@ CommandResult switchModeCommand(std::shared_ptr<DependencyRegistry> registry, co
     projectConfig->setDeviceMode(newMode);
 
     return CommandResult::getSuccessResult("Device mode switched, restart to apply");
+}
+
+CommandResult switchModeAndRestartCommand(std::shared_ptr<DependencyRegistry> registry, const nlohmann::json &json)
+{
+    if (!json.contains("mode") || !json["mode"].is_string())
+    {
+        return CommandResult::getErrorResult("Invalid payload - missing mode");
+    }
+
+    auto modeStr = json["mode"].get<std::string>();
+    StreamingMode newMode;
+
+    ESP_LOGI("[DEVICE_COMMANDS]", "Switch mode and restart command received with mode: %s", modeStr.c_str());
+
+    if (modeStr == "uvc")
+    {
+        newMode = StreamingMode::UVC;
+    }
+    else if (modeStr == "wifi")
+    {
+        newMode = StreamingMode::WIFI;
+    }
+    else if (modeStr == "setup" || modeStr == "auto")
+    {
+        newMode = StreamingMode::SETUP;
+    }
+    else
+    {
+        return CommandResult::getErrorResult("Invalid mode - use 'uvc', 'wifi', or 'auto'");
+    }
+
+    const auto projectConfig = registry->resolve<ProjectConfig>(DependencyType::project_config);
+    StreamingMode currentMode = projectConfig->getDeviceMode();
+
+    if (currentMode == newMode)
+    {
+        ESP_LOGI("[DEVICE_COMMANDS]", "Device already in mode: %d, no restart needed", (int)currentMode);
+        return CommandResult::getSuccessResult("Device already in requested mode");
+    }
+
+    ESP_LOGI("[DEVICE_COMMANDS]", "Setting device mode to: %d and scheduling restart", (int)newMode);
+    projectConfig->setDeviceMode(newMode);
+
+    OpenIrisTasks::ScheduleRestart(2000);
+    return CommandResult::getSuccessResult("Device mode switched, restarting...");
 }
 
 CommandResult getDeviceModeCommand(std::shared_ptr<DependencyRegistry> registry)

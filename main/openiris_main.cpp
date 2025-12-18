@@ -167,6 +167,17 @@ void force_activate_streaming()
     launch_streaming();
 }
 
+// Start just the stream server directly (for SETUP mode startStreamingCommand)
+void force_start_stream_server()
+{
+#ifdef CONFIG_GENERAL_ENABLE_WIRELESS
+    ESP_LOGI("[MAIN]", "Starting stream server directly via command.");
+    streamServer.startStreamServer();
+#else
+    ESP_LOGW("[MAIN]", "Wireless is disabled; cannot start stream server.");
+#endif
+}
+
 void startWiredMode(bool shouldCloseSerialManager)
 {
 #ifndef CONFIG_GENERAL_INCLUDE_UVC_MODE
@@ -222,7 +233,8 @@ void startWiFiMode()
     mdnsManager.start();
     restAPI->begin();
     StreamingMode mode = deviceConfig->getDeviceMode();
-    // don't enable in SETUP mode
+    // Only auto-start stream server in WIFI mode, not SETUP mode
+    // In SETUP mode, use startStreamingCommand to manually start streaming
     if (mode == StreamingMode::WIFI)
     {
         streamServer.startStreamServer();
