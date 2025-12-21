@@ -78,10 +78,10 @@ void WiFiManager::SetCredentials(const char *ssid, const char *password)
   _wifi_cfg.sta.pmf_cfg.capable = false;
   _wifi_cfg.sta.pmf_cfg.required = false;
 
-  // IMPORTANT: Set scan method to ALL channels
-  _wifi_cfg.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
+  // OPTIMIZATION: Use fast scan instead of all channel scan for quicker connection
+  _wifi_cfg.sta.scan_method = WIFI_FAST_SCAN;
   _wifi_cfg.sta.bssid_set = 0; // Don't use specific BSSID
-  _wifi_cfg.sta.channel = 0;   // Scan all channels
+  _wifi_cfg.sta.channel = 0;   // Auto channel detection
 
   // Additional settings that might help with compatibility
   _wifi_cfg.sta.listen_interval = 0;                     // Default listen interval
@@ -102,7 +102,12 @@ void WiFiManager::ConnectWithHardcodedCredentials()
 {
   SystemEvent event = {EventSource::WIFI, WiFiState_e::WiFiState_ReadyToConnect};
   this->SetCredentials(CONFIG_WIFI_SSID, CONFIG_WIFI_PASSWORD);
-  esp_wifi_stop();
+
+  wifi_mode_t mode;
+  if (esp_wifi_get_mode(&mode) == ESP_OK) {
+    esp_wifi_stop();
+  }
+
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &_wifi_cfg));
 
@@ -112,11 +117,12 @@ void WiFiManager::ConnectWithHardcodedCredentials()
   event.value = WiFiState_e::WiFiState_Connecting;
   xQueueSend(this->eventQueue, &event, 10);
 
+  // Use shorter timeout for faster startup - 8 seconds should be enough for most networks
   EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
                                          WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
                                          pdFALSE,
                                          pdFALSE,
-                                         portMAX_DELAY);
+                                         pdMS_TO_TICKS(8000));
 
   /* xEventGroupWaitBits() returns the bits before the call returned, hence we can test which event actually
    * happened. */
@@ -192,7 +198,7 @@ void WiFiManager::ConnectWithStoredCredentials()
                                            WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
                                            pdFALSE,
                                            pdFALSE,
-                                           pdMS_TO_TICKS(30000)); // 30 second timeout instead of portMAX_DELAY
+                                           pdMS_TO_TICKS(10000)); // 10 second timeout for faster failover
     if (bits & WIFI_CONNECTED_BIT)
     {
       ESP_LOGI(WIFI_MANAGER_TAG, "connected to ap SSID:%s",
