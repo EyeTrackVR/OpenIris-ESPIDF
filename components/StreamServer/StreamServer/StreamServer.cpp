@@ -12,7 +12,6 @@ StreamServer::StreamServer(const int STREAM_PORT, StateManager *stateManager) : 
 
 esp_err_t StreamHelpers::stream(httpd_req_t *req)
 {
-  long last_request_time = 0;
   camera_fb_t *fb = nullptr;
   struct timeval _timestamp;
 
@@ -75,14 +74,29 @@ esp_err_t StreamHelpers::stream(httpd_req_t *req)
     if (response != ESP_OK)
       break;
 
-    // Only log every 100 frames to reduce overhead
-    static int frame_count = 0;
-    if (++frame_count % 100 == 0)
+    if (esp_log_level_get(STREAM_SERVER_TAG) >= ESP_LOG_INFO)
     {
-      long request_end = Helpers::getTimeInMillis();
-      long latency = (request_end - last_request_time);
-      last_request_time = request_end;
-      ESP_LOGI(STREAM_SERVER_TAG, "Size: %uKB, Time: %lims (%lifps)", _jpg_buf_len / 1024, latency, 1000 / latency);
+      static long last_request_time = 0;
+      if (last_request_time == 0)
+      {
+        last_request_time = Helpers::getTimeInMillis();
+      }
+
+      // Only log every 100 frames to reduce overhead
+      const int frame_window = 100;
+      static int frame_count = 0;
+      if (++frame_count % frame_window == 0)
+      {
+        long request_end = Helpers::getTimeInMillis();
+        long window_ms = request_end - last_request_time;
+        last_request_time = request_end;
+        long fps = 0;
+        if (window_ms > 0)
+        {
+          fps = (frame_window * 1000) / window_ms;
+        }
+        ESP_LOGI(STREAM_SERVER_TAG, "%i Frames Size: %uKB, Time: %lims (%lifps)",frame_window, _jpg_buf_len / 1024, window_ms, fps);
+      }
     }
   }
   last_frame = 0;
