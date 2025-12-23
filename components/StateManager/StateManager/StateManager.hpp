@@ -76,6 +76,7 @@ public:
   void HandleUpdateState();
   WiFiState_e GetWifiState();
   CameraState_e GetCameraState();
+  QueueHandle_t GetEventQueue() const;
 
 private:
   QueueHandle_t eventQueue;
@@ -86,6 +87,15 @@ private:
   CameraState_e camera_state;
   StreamState_e stream_state;
 };
+
+// Lightweight helper to publish stream state changes to the shared event queue.
+static inline bool SendStreamEvent(QueueHandle_t queue, StreamState_e state)
+{
+  if (!queue)
+    return false;
+  SystemEvent evt{EventSource::STREAM, state};
+  return xQueueSend(queue, &evt, 0) == pdTRUE;
+}
 
 void HandleStateManagerTask(void *pvParameters);
 

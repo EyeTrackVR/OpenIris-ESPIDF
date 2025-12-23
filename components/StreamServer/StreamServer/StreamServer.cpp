@@ -26,12 +26,20 @@ esp_err_t StreamHelpers::stream(httpd_req_t *req)
   if (!last_frame)
     last_frame = esp_timer_get_time();
 
+  // Pull event queue from user_ctx to send STREAM on/off notifications
+  auto *stateManager = static_cast<StateManager *>(req->user_ctx);
+  QueueHandle_t eventQueue = stateManager ? stateManager->GetEventQueue() : nullptr;
+  bool stream_on_sent = false;
+
   response = httpd_resp_set_type(req, STREAM_CONTENT_TYPE);
   if (response != ESP_OK)
     return response;
 
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
   httpd_resp_set_hdr(req, "X-Framerate", "60");
+
+  if (SendStreamEvent(eventQueue, StreamState_e::Stream_ON))
+    stream_on_sent = true;
 
   while (true)
   {
@@ -86,6 +94,10 @@ esp_err_t StreamHelpers::stream(httpd_req_t *req)
     }
   }
   last_frame = 0;
+
+  if (stream_on_sent)
+    SendStreamEvent(eventQueue, StreamState_e::Stream_OFF);
+
   return response;
 }
 
@@ -110,7 +122,7 @@ esp_err_t StreamServer::startStreamServer()
       .uri = "/",
       .method = HTTP_GET,
       .handler = &StreamHelpers::stream,
-      .user_ctx = nullptr,
+      .user_ctx = this->stateManager,
   };
 
   httpd_uri_t logs_ws = {
@@ -137,6 +149,10 @@ esp_err_t StreamServer::startStreamServer()
   }
 
   httpd_register_uri_handler(camera_stream, &stream_page);
+
+  // Initial state is OFF
+  if (this->stateManager)
+    SendStreamEvent(this->stateManager->GetEventQueue(), StreamState_e::Stream_OFF);
 
   ESP_LOGI(STREAM_SERVER_TAG, "Stream server started on port %d", STREAM_SERVER_PORT);
 

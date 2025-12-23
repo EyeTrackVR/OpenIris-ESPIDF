@@ -67,8 +67,7 @@ static esp_err_t UVCStreamHelpers::camera_start_cb(uvc_format_t format, int widt
 
   cameraHandler->setCameraResolution(frame_size);
 
-  constexpr SystemEvent event = {EventSource::STREAM, StreamState_e::Stream_ON};
-  xQueueSend(eventQueue, &event, 10);
+  SendStreamEvent(eventQueue, StreamState_e::Stream_ON);
 
   return ESP_OK;
 }
@@ -82,8 +81,7 @@ static void UVCStreamHelpers::camera_stop_cb(void *cb_ctx)
     s_fb.cam_fb_p = nullptr;
   }
 
-  constexpr SystemEvent event = {EventSource::STREAM, StreamState_e::Stream_OFF};
-  xQueueSend(eventQueue, &event, 10);
+  SendStreamEvent(eventQueue, StreamState_e::Stream_OFF);
 }
 
 static uvc_fb_t *UVCStreamHelpers::camera_fb_get_cb(void *cb_ctx)
@@ -204,6 +202,9 @@ esp_err_t UVCStreamManager::setup()
     return ret;
   }
   ESP_LOGI(UVC_STREAM_TAG, "Initialized UVC Device");
+
+  // Initial state is OFF
+  SendStreamEvent(eventQueue, StreamState_e::Stream_OFF);
 
   return ESP_OK;
 }

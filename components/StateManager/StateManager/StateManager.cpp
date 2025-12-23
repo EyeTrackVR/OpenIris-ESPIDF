@@ -63,9 +63,9 @@ void StateManager::HandleUpdateState()
         ledStreamState = LEDStates_e::LedStateStreaming;
         xQueueSend(this->ledStateQueue, &ledStreamState, 10);
       }
-      if (this->stream_state == StreamState_e::Stream_ON)
+      else if (this->stream_state == StreamState_e::Stream_OFF)
       {
-        ledStreamState = LEDStates_e::LedStateStreaming;
+        ledStreamState = LEDStates_e::LedStateStoppedStreaming;
         xQueueSend(this->ledStateQueue, &ledStreamState, 10);
       }
       break;
@@ -85,6 +85,11 @@ WiFiState_e StateManager::GetWifiState()
 CameraState_e StateManager::GetCameraState()
 {
   return this->camera_state;
+}
+
+QueueHandle_t StateManager::GetEventQueue() const
+{
+  return this->eventQueue;
 }
 
 void HandleStateManagerTask(void *pvParameters)
