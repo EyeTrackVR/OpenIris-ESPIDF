@@ -26,6 +26,7 @@ std::unordered_map<std::string, CommandType> commandTypeMap = {
     {"get_led_duty_cycle", CommandType::GET_LED_DUTY_CYCLE},
     {"get_serial", CommandType::GET_SERIAL},
     {"get_led_current", CommandType::GET_LED_CURRENT},
+    {"get_battery_status", CommandType::GET_BATTERY_STATUS},
     {"get_who_am_i", CommandType::GET_WHO_AM_I},
 };
 
@@ -102,6 +103,9 @@ std::function<CommandResult()> CommandManager::createCommand(const CommandType t
   case CommandType::GET_LED_CURRENT:
     return [this]
     { return getLEDCurrentCommand(this->registry); };
+  case CommandType::GET_BATTERY_STATUS:
+    return [this]
+    { return getBatteryStatusCommand(this->registry); };
   case CommandType::GET_WHO_AM_I:
     return [this]
     { return getInfoCommand(this->registry); };

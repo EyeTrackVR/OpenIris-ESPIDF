@@ -232,6 +232,19 @@ def get_led_current(device: OpenIrisDevice) -> dict:
     }
 
 
+def get_battery_status(device: OpenIrisDevice) -> dict:
+    response = device.send_command("get_battery_status")
+    if has_command_failed(response):
+        print(f"❌ Failed to get battery status: {response}")
+        return {"voltage_mv": "unknown", "percentage": "unknown"}
+
+    data = response["results"][0]["result"]["data"]
+    return {
+        "voltage_mv": data.get("voltage_mv", "unknown"),
+        "percentage": data.get("percentage", "unknown"),
+    }
+
+
 def configure_device_name(device: OpenIrisDevice, *args, **kwargs):
     current_name = get_mdns_name(device)
     print(f"\n📍 Current device name: {current_name['name']} \n")
@@ -340,6 +353,7 @@ def get_settings_summary(device: OpenIrisDevice, *args, **kwargs):
         ("Info", get_device_info),
         ("LED", get_led_duty_cycle),
         ("Current", get_led_current),
+        ("Battery", get_battery_status),
         ("Mode", get_device_mode),
         ("WiFi", get_wifi_status),
     ]
@@ -356,6 +370,11 @@ def get_settings_summary(device: OpenIrisDevice, *args, **kwargs):
     current_section = summary.get("Current", {})
     led_current_ma = current_section.get("led_current_ma")
     print(f"🔌 LED Current: {led_current_ma} mA")
+
+    battery = summary.get("Battery", {})
+    voltage_mv = battery.get("voltage_mv")
+    percentage = battery.get("percentage")
+    print(f"🔋 Battery: {voltage_mv} mV | {percentage} %")
 
     advertised_name_data = summary.get("AdvertisedName", {})
     advertised_name = advertised_name_data.get("name")

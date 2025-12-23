@@ -26,6 +26,7 @@ CommandResult getSerialNumberCommand(std::shared_ptr<DependencyRegistry> registr
 
 // Monitoring
 CommandResult getLEDCurrentCommand(std::shared_ptr<DependencyRegistry> registry);
+CommandResult getBatteryStatusCommand(std::shared_ptr<DependencyRegistry> registry);
 
 // General info
 CommandResult getInfoCommand(std::shared_ptr<DependencyRegistry> registry);
