@@ -238,4 +238,55 @@ menu "OpenIris: Monitoring"
         help
             Period between samples when background monitoring is active.
 
+    config MONITORING_BATTERY_ENABLE
+        bool "Enable battery voltage monitoring"
+        default y
+        help
+            Enables an ADC-based readout of the lithium battery voltage so the software
+            can report remaining charge in commands or REST endpoints.
+
+    config MONITORING_BATTERY_ADC_GPIO
+        int "ADC GPIO for battery voltage"
+        depends on MONITORING_BATTERY_ENABLE
+        range 0 48
+        default 1
+        help
+            GPIO that is wired to the battery sense divider. On ESP32-S3 ADC1 channels
+            1..10 map to GPIO1..10; adjust if your board uses a different pin.
+
+    config MONITORING_BATTERY_DIVIDER_R_TOP_OHM
+        int "Battery divider top resistor (ohms)"
+        depends on MONITORING_BATTERY_ENABLE
+        range 1 10000000
+        default 10000
+        help
+            The resistor from battery positive to ADC input in the voltage divider.
+            Set together with MONITORING_BATTERY_DIVIDER_R_BOTTOM_OHM to match your
+            board's sense network. Effective scale = 1 + R_top / R_bottom.
+
+    config MONITORING_BATTERY_DIVIDER_R_BOTTOM_OHM
+        int "Battery divider bottom resistor (ohms)"
+        depends on MONITORING_BATTERY_ENABLE
+        range 1 10000000
+        default 10000
+        help
+            The resistor from ADC input to ground in the voltage divider. For a 1:1
+            divider with 10k/10k, leave the defaults (10 kΩ each).
+
+    config MONITORING_BATTERY_SAMPLES
+        int "Battery filter window size (samples)"
+        depends on MONITORING_BATTERY_ENABLE
+        range 1 200
+        default 10
+        help
+            Moving-average window length for battery voltage filtering.
+
+    config MONITORING_BATTERY_INTERVAL_MS
+        int "Battery sampling interval (ms)"
+        depends on MONITORING_BATTERY_ENABLE
+        range 10 60000
+        default 1000
+        help
+            Period between background battery voltage samples.
+
 endmenu
