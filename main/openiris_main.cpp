@@ -23,7 +23,7 @@
 #include <RestAPI.hpp>
 #include <main_globals.hpp>
 
-#ifdef CONFIG_MONITORING_LED_CURRENT
+#if CONFIG_MONITORING_LED_CURRENT || CONFIG_MONITORING_BATTERY_ENABLE
 #include <MonitoringManager.hpp>
 #endif
 
@@ -72,7 +72,7 @@ UVCStreamManager uvcStream;
 
 auto ledManager = std::make_shared<LEDManager>(BLINK_GPIO, CONFIG_LED_C_PIN_GPIO, ledStateQueue, deviceConfig);
 
-#ifdef CONFIG_MONITORING_LED_CURRENT
+#if CONFIG_MONITORING_LED_CURRENT || CONFIG_MONITORING_BATTERY_ENABLE
 std::shared_ptr<MonitoringManager> monitoringManager = std::make_shared<MonitoringManager>();
 #endif
 
@@ -273,7 +273,7 @@ extern "C" void app_main(void)
 #endif
     dependencyRegistry->registerService<LEDManager>(DependencyType::led_manager, ledManager);
 
-#ifdef CONFIG_MONITORING_LED_CURRENT
+#if CONFIG_MONITORING_LED_CURRENT || CONFIG_MONITORING_BATTERY_ENABLE
     dependencyRegistry->registerService<MonitoringManager>(DependencyType::monitoring_manager, monitoringManager);
 #endif
 
@@ -285,7 +285,7 @@ extern "C" void app_main(void)
     deviceConfig->load();
     ledManager->setup();
 
-#ifdef CONFIG_MONITORING_LED_CURRENT
+#if CONFIG_MONITORING_LED_CURRENT || CONFIG_MONITORING_BATTERY_ENABLE
     monitoringManager->setup();
     monitoringManager->start();
 #endif
