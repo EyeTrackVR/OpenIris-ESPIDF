@@ -17,6 +17,8 @@ set(
 
 if ("$ENV{IDF_TARGET}" STREQUAL "esp32s3")
 list(APPEND source_files
+            "Monitoring/AdcSampler.cpp"
+            "Monitoring/BatteryMonitor.cpp"
             "Monitoring/CurrentMonitor_esp32s3.cpp"
             "Monitoring/MonitoringManager_esp32s3.cpp"
 )

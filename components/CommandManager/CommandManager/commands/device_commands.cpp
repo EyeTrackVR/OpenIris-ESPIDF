@@ -1,4 +1,6 @@
 #include "device_commands.hpp"
+#include <algorithm>
+#include <array>
 #include "LEDManager.hpp"
 #include "MonitoringManager.hpp"
 #include "esp_mac.h"
@@ -216,6 +218,69 @@ CommandResult getLEDCurrentCommand(std::shared_ptr<DependencyRegistry> registry)
     return CommandResult::getSuccessResult(json);
 #else
     return CommandResult::getErrorResult("Monitoring disabled");
+#endif
+}
+
+CommandResult getBatteryStatusCommand(std::shared_ptr<DependencyRegistry> registry)
+{
+#if CONFIG_MONITORING_BATTERY_ENABLE
+    auto mon = registry->resolve<MonitoringManager>(DependencyType::monitoring_manager);
+    if (!mon)
+    {
+        return CommandResult::getErrorResult("MonitoringManager unavailable");
+    }
+
+    const float volts = mon->getBatteryVoltageMilliVolts();
+    if (volts <= 0.0f)
+    {
+        return CommandResult::getErrorResult("Battery voltage unavailable");
+    }
+
+    struct VoltageSOC
+    {
+        float voltage_mv;
+        float soc;
+    };
+
+    constexpr std::array<VoltageSOC, 12> lookup = {
+        VoltageSOC{4200.0f, 100.0f}, VoltageSOC{4060.0f, 90.0f}, VoltageSOC{3980.0f, 80.0f}, VoltageSOC{3920.0f, 70.0f},
+        VoltageSOC{3870.0f, 60.0f},  VoltageSOC{3820.0f, 50.0f}, VoltageSOC{3790.0f, 40.0f}, VoltageSOC{3770.0f, 30.0f},
+        VoltageSOC{3740.0f, 20.0f},  VoltageSOC{3680.0f, 10.0f}, VoltageSOC{3450.0f, 5.0f},  VoltageSOC{3300.0f, 0.0f},
+    };
+
+    float percent = 0.0f;
+    if (volts >= lookup.front().voltage_mv)
+    {
+        percent = lookup.front().soc;
+    }
+    else if (volts <= lookup.back().voltage_mv)
+    {
+        percent = lookup.back().soc;
+    }
+    else
+    {
+        for (size_t index = 0; index < lookup.size() - 1; ++index)
+        {
+            const auto high = lookup[index];
+            const auto low = lookup[index + 1];
+            if (volts <= high.voltage_mv && volts >= low.voltage_mv)
+            {
+                const float span = high.voltage_mv - low.voltage_mv;
+                const float ratio = (volts - low.voltage_mv) / (span > 0.0f ? span : 1.0f);
+                percent = low.soc + ratio * (high.soc - low.soc);
+                break;
+            }
+        }
+    }
+    percent = std::clamp(percent, 0.0f, 100.0f);
+
+    const auto json = nlohmann::json{
+        {"voltage_mv", std::format("{:.2f}", static_cast<double>(volts))},
+        {"percentage", std::format("{:.1f}", static_cast<double>(percent))},
+    };
+    return CommandResult::getSuccessResult(json);
+#else
+    return CommandResult::getErrorResult("Battery monitor disabled");
 #endif
 }
 
