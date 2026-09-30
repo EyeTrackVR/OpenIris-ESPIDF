@@ -49,6 +49,13 @@ void StateManager::HandleUpdateState()
                 ledStreamState = LEDStates_e::CameraError;
                 xQueueSend(this->ledStateQueue, &ledStreamState, 10);
             }
+            else if (this->camera_state == CameraState_e::Camera_Success)
+            {
+                // Camera can recover on its own now (CameraManager's retry task), so clear the
+                // error pattern instead of leaving the LED stuck showing CameraError forever.
+                ledStreamState = LEDStates_e::LedStateNone;
+                xQueueSend(this->ledStateQueue, &ledStreamState, 10);
+            }
 
             break;
         }

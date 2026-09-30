@@ -1,4 +1,5 @@
 #include "StreamServer.hpp"
+#include <sys/time.h>
 
 constexpr static const char* STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=" PART_BOUNDARY;
 constexpr static const char* STREAM_BOUNDARY = "\r\n--" PART_BOUNDARY "\r\n";
@@ -6,7 +7,10 @@ constexpr static const char* STREAM_PART = "Content-Type: image/jpeg\r\nContent-
 
 static const char* STREAM_SERVER_TAG = "[STREAM_SERVER]";
 
-StreamServer::StreamServer(const int STREAM_PORT, StateManager* stateManager) : STREAM_SERVER_PORT(STREAM_PORT), stateManager(stateManager) {}
+StreamServer::StreamServer(const int STREAM_PORT, StateManager* stateManager, std::shared_ptr<CameraManager> cameraManager)
+    : STREAM_SERVER_PORT(STREAM_PORT), stateManager(stateManager), cameraManager(cameraManager)
+{
+}
 
 esp_err_t StreamHelpers::stream(httpd_req_t* req)
 {
@@ -23,8 +27,11 @@ esp_err_t StreamHelpers::stream(httpd_req_t* req)
     if (!last_frame)
         last_frame = esp_timer_get_time();
 
-    // Pull event queue from user_ctx to send STREAM on/off notifications
-    auto* stateManager = static_cast<StateManager*>(req->user_ctx);
+    // Pull state/camera managers from user_ctx to send STREAM on/off notifications and, if the
+    // camera failed to init, fall back to a diagnostic frame instead of just dropping the feed.
+    auto* ctx = static_cast<StreamUserCtx*>(req->user_ctx);
+    StateManager* stateManager = ctx ? ctx->stateManager : nullptr;
+    CameraManager* cameraManager = ctx ? ctx->cameraManager : nullptr;
     QueueHandle_t eventQueue = stateManager ? stateManager->GetEventQueue() : nullptr;
     bool stream_on_sent = false;
 
@@ -40,22 +47,42 @@ esp_err_t StreamHelpers::stream(httpd_req_t* req)
 
     while (true)
     {
-        fb = esp_camera_fb_get();
+        // Re-checked every iteration (not just once at connection start) so an already-open
+        // stream picks up a camera that recovers mid-connection (see CameraManager's retry
+        // task) without the client needing to reconnect.
+        const bool cameraFailed = stateManager && stateManager->GetCameraState() == CameraState_e::Camera_Error;
+        const uint8_t* diagBuf = nullptr;
+        size_t diagLen = 0;
+        const bool haveDiagFrame = cameraFailed && cameraManager && cameraManager->getDiagnosticFrame(&diagBuf, &diagLen);
 
-        if (!fb)
+        if (haveDiagFrame)
         {
-            ESP_LOGE(STREAM_SERVER_TAG, "Camera capture failed");
-            response = ESP_FAIL;
-            // Don't break immediately, try to recover
-            vTaskDelay(pdMS_TO_TICKS(10));
-            continue;
+            // No real camera frames are coming; re-serve the same diagnostic JPEG slowly so
+            // clients see it as a (mostly static) video feed instead of a broken connection.
+            gettimeofday(&_timestamp, nullptr);
+            _jpg_buf_len = diagLen;
+            _jpg_buf = const_cast<uint8_t*>(diagBuf);
+            fb = nullptr;
         }
         else
         {
-            _timestamp.tv_sec = fb->timestamp.tv_sec;
-            _timestamp.tv_usec = fb->timestamp.tv_usec;
-            _jpg_buf_len = fb->len;
-            _jpg_buf = fb->buf;
+            fb = esp_camera_fb_get();
+
+            if (!fb)
+            {
+                ESP_LOGE(STREAM_SERVER_TAG, "Camera capture failed");
+                response = ESP_FAIL;
+                // Don't break immediately, try to recover
+                vTaskDelay(pdMS_TO_TICKS(10));
+                continue;
+            }
+            else
+            {
+                _timestamp.tv_sec = fb->timestamp.tv_sec;
+                _timestamp.tv_usec = fb->timestamp.tv_usec;
+                _jpg_buf_len = fb->len;
+                _jpg_buf = fb->buf;
+            }
         }
         if (response == ESP_OK)
             response = httpd_resp_send_chunk(req, STREAM_BOUNDARY, strlen(STREAM_BOUNDARY));
@@ -72,13 +99,21 @@ esp_err_t StreamHelpers::stream(httpd_req_t* req)
             fb = NULL;
             _jpg_buf = NULL;
         }
-        else if (_jpg_buf)
+        else if (_jpg_buf && !haveDiagFrame)
         {
+            // _jpg_buf points at the diagnostic frame's cached buffer when haveDiagFrame is set,
+            // which is owned by CameraManager and reused every iteration - never free it here.
             free(_jpg_buf);
             _jpg_buf = NULL;
         }
         if (response != ESP_OK)
             break;
+
+        if (haveDiagFrame)
+        {
+            // No real capture rate to pace against; throttle the repeated diagnostic frame.
+            vTaskDelay(pdMS_TO_TICKS(500));
+        }
 
         if (esp_log_level_get(STREAM_SERVER_TAG) >= ESP_LOG_INFO)
         {
@@ -130,11 +165,12 @@ esp_err_t StreamServer::startStreamServer()
     config.send_wait_timeout = 5;    // 5 seconds for sending
     config.lru_purge_enable = true;  // Enable LRU purge for better connection handling
 
+    this->userCtx = StreamUserCtx{this->stateManager, this->cameraManager.get()};
     httpd_uri_t stream_page = {
         .uri = "/",
         .method = HTTP_GET,
         .handler = &StreamHelpers::stream,
-        .user_ctx = this->stateManager,
+        .user_ctx = &this->userCtx,
     };
 
     httpd_uri_t logs_ws = {
@@ -154,10 +190,13 @@ esp_err_t StreamServer::startStreamServer()
     }
 
     httpd_register_uri_handler(camera_stream, &logs_ws);
-    if (this->stateManager->GetCameraState() != CameraState_e::Camera_Success)
+
+    const bool cameraOk = this->stateManager->GetCameraState() == CameraState_e::Camera_Success;
+    if (!cameraOk)
     {
-        ESP_LOGE(STREAM_SERVER_TAG, "Camera not initialized. Cannot start stream server. Logs server will be running.");
-        return ESP_FAIL;
+        // Still register "/" - the handler serves a diagnostic frame (error code rendered as a
+        // JPEG) instead of a real feed, so clients see the failure instead of a dead connection.
+        ESP_LOGW(STREAM_SERVER_TAG, "Camera not initialized. Stream will serve a diagnostic frame instead of live video.");
     }
 
     httpd_register_uri_handler(camera_stream, &stream_page);

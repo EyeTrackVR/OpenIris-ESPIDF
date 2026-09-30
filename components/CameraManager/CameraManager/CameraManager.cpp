@@ -1,6 +1,111 @@
 #include "CameraManager.hpp"
+#include "esp_heap_caps.h"
+#include "freertos/task.h"
+#include "img_converters.h"
+
+#include <algorithm>
+#include <cstdlib>
+#include <cstring>
 
 const char* CAMERA_MANAGER_TAG = "[CAMERA_MANAGER]";
+
+namespace
+{
+// 5x7 pixel font, hex digits 0-F only. Each glyph is 7 rows, bit4 = leftmost column.
+// Hand-drawn (not lifted from any font asset) - legibility over accuracy to any real typeface.
+constexpr uint8_t FONT_5X7[16][7] = {
+    {0b01110, 0b10001, 0b10011, 0b10101, 0b11001, 0b10001, 0b01110},  // 0
+    {0b00100, 0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110},  // 1
+    {0b01110, 0b10001, 0b00001, 0b00010, 0b00100, 0b01000, 0b11111},  // 2
+    {0b11111, 0b00010, 0b00100, 0b00010, 0b00001, 0b10001, 0b01110},  // 3
+    {0b00010, 0b00110, 0b01010, 0b10010, 0b11111, 0b00010, 0b00010},  // 4
+    {0b11111, 0b10000, 0b11110, 0b00001, 0b00001, 0b10001, 0b01110},  // 5
+    {0b00110, 0b01000, 0b10000, 0b11110, 0b10001, 0b10001, 0b01110},  // 6
+    {0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b01000, 0b01000},  // 7
+    {0b01110, 0b10001, 0b10001, 0b01110, 0b10001, 0b10001, 0b01110},  // 8
+    {0b01110, 0b10001, 0b10001, 0b01111, 0b00001, 0b00010, 0b01100},  // 9
+    {0b01110, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001},  // A
+    {0b11110, 0b10001, 0b10001, 0b11110, 0b10001, 0b10001, 0b11110},  // b
+    {0b01111, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b01111},  // C
+    {0b11100, 0b10010, 0b10001, 0b10001, 0b10001, 0b10010, 0b11100},  // d
+    {0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b11111},  // E
+    {0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b10000},  // F
+};
+
+constexpr uint16_t FRAME_DIM = 240;
+constexpr uint8_t BG_SHADE = 30;
+constexpr uint8_t FG_SHADE = 255;
+
+void fillRect(uint8_t* buf, int x0, int y0, int x1, int y1, uint8_t shade)
+{
+    x0 = std::max(x0, 0);
+    y0 = std::max(y0, 0);
+    x1 = std::min(x1, (int)FRAME_DIM);
+    y1 = std::min(y1, (int)FRAME_DIM);
+    for (int y = y0; y < y1; y++)
+    {
+        std::memset(buf + (size_t)y * FRAME_DIM + x0, shade, std::max(0, x1 - x0));
+    }
+}
+
+// A 3-hex-digit label is a grid of cells GRID_W (17) x GRID_H (7): each character is 5 cols
+// wide with a 1-col gap between characters (5+1+5+1+5 = 17), 7 rows tall.
+constexpr int GRID_W = 17;
+constexpr int GRID_H = 7;
+
+// Rotates a label-local cell coordinate by 0/90/180/270 degrees (clockwise) around the label's
+// own origin. Since rotations are multiples of 90 degrees, grid cells map to grid cells exactly -
+// no interpolation needed. rotation is 0-3 (x90 degrees).
+void rotateCell(int gx, int gy, int rotation, int* outGx, int* outGy)
+{
+    switch (rotation & 0x3)
+    {
+    case 0:
+        *outGx = gx;
+        *outGy = gy;
+        break;
+    case 1:  // 90 CW
+        *outGx = GRID_H - 1 - gy;
+        *outGy = gx;
+        break;
+    case 2:  // 180
+        *outGx = GRID_W - 1 - gx;
+        *outGy = GRID_H - 1 - gy;
+        break;
+    default:  // 270 CW
+        *outGx = gy;
+        *outGy = GRID_W - 1 - gx;
+        break;
+    }
+}
+
+// Draws a 3-hex-digit label rotated by `rotation` (0-3, x90 degrees clockwise), with its
+// rotated bounding box's top-left corner at (originX, originY) in the destination buffer.
+void drawLabelRotated(uint8_t* buf, int originX, int originY, int scale, int rotation, const uint8_t nibbles[3])
+{
+    for (int charIdx = 0; charIdx < 3; charIdx++)
+    {
+        const auto& rows = FONT_5X7[nibbles[charIdx] & 0xF];
+        for (int row = 0; row < 7; row++)
+        {
+            for (int col = 0; col < 5; col++)
+            {
+                if (!(rows[row] & (1 << (4 - col))))
+                    continue;
+
+                const int gx = charIdx * 6 + col;  // 5 cols + 1 gap per character
+                const int gy = row;
+                int rgx, rgy;
+                rotateCell(gx, gy, rotation, &rgx, &rgy);
+
+                const int x = originX + rgx * scale;
+                const int y = originY + rgy * scale;
+                fillRect(buf, x, y, x + scale, y + scale, FG_SHADE);
+            }
+        }
+    }
+}
+}  // namespace
 
 CameraManager::CameraManager(std::shared_ptr<ProjectConfig> projectConfig, QueueHandle_t eventQueue) : projectConfig(projectConfig), eventQueue(eventQueue) {}
 
@@ -156,6 +261,7 @@ bool CameraManager::setupCamera()
     {
         ESP_LOGI(CAMERA_MANAGER_TAG, "Camera initialized: %s \r\n", esp_err_to_name(hasCameraBeenInitialized));
 
+        this->cameraOk = true;
         constexpr auto event = SystemEvent{EventSource::CAMERA, CameraState_e::Camera_Success};
         xQueueSend(this->eventQueue, &event, 10);
     }
@@ -164,9 +270,10 @@ bool CameraManager::setupCamera()
         ESP_LOGE(CAMERA_MANAGER_TAG, "Camera initialization failed with error: %s \r\n", esp_err_to_name(hasCameraBeenInitialized));
         ESP_LOGE(CAMERA_MANAGER_TAG,
                  "Camera most likely not seated properly in the socket. "
-                 "Please "
-                 "fix the "
-                 "camera and reboot the device.\r\n");
+                 "Please fix the camera - it'll be retried automatically, no reboot needed.\r\n");
+        this->cameraOk = false;
+        this->lastCameraError = hasCameraBeenInitialized;
+        this->generateDiagnosticFrame();
         constexpr auto event = SystemEvent{EventSource::CAMERA, CameraState_e::Camera_Error};
         xQueueSend(this->eventQueue, &event, 10);
         return false;
@@ -189,6 +296,33 @@ bool CameraManager::setupCamera()
 
     this->setupCameraSensor();
     return true;
+}
+
+bool CameraManager::isCameraOk() const
+{
+    return cameraOk;
+}
+
+namespace
+{
+void CameraRetryTask(void* param)
+{
+    auto* self = static_cast<CameraManager*>(param);
+    while (true)
+    {
+        vTaskDelay(pdMS_TO_TICKS(5000));
+        if (!self->isCameraOk())
+        {
+            ESP_LOGI(CAMERA_MANAGER_TAG, "Camera not initialized, retrying...");
+            self->setupCamera();
+        }
+    }
+}
+}  // namespace
+
+void CameraManager::startAutoRetry()
+{
+    xTaskCreate(CameraRetryTask, "CameraRetryTask", 1024 * 3, this, 1, nullptr);
 }
 
 void CameraManager::loadConfigData()
@@ -226,4 +360,96 @@ int CameraManager::setVieWindow(int offsetX, int offsetY, int outputX, int outpu
 {
     // todo safariMonkey made a PoC, implement it here
     return 0;
+}
+
+esp_err_t CameraManager::getLastCameraError() const
+{
+    return lastCameraError;
+}
+
+bool CameraManager::getDiagnosticFrame(const uint8_t** outBuf, size_t* outLen) const
+{
+    if (!diagnosticJpegBuf || diagnosticJpegLen == 0)
+        return false;
+
+    *outBuf = diagnosticJpegBuf;
+    *outLen = diagnosticJpegLen;
+    return true;
+}
+
+void CameraManager::generateDiagnosticFrame()
+{
+    if (diagnosticJpegBuf)
+    {
+        free(diagnosticJpegBuf);
+        diagnosticJpegBuf = nullptr;
+        diagnosticJpegLen = 0;
+    }
+
+    auto* raw = static_cast<uint8_t*>(heap_caps_malloc((size_t)FRAME_DIM * FRAME_DIM, MALLOC_CAP_SPIRAM));
+    if (!raw)
+    {
+        ESP_LOGE(CAMERA_MANAGER_TAG, "Failed to allocate diagnostic frame buffer");
+        return;
+    }
+
+    std::memset(raw, BG_SHADE, (size_t)FRAME_DIM * FRAME_DIM);
+
+    // The error code magnitude fits comfortably in 3 hex digits for every esp_err_t this
+    // component can produce (e.g. ESP_ERR_NOT_FOUND = 0x105), so we only render 3.
+    const uint32_t code = static_cast<uint32_t>(std::abs(static_cast<int>(lastCameraError))) & 0xFFF;
+    const uint8_t nibbles[3] = {
+        static_cast<uint8_t>((code >> 8) & 0xF),
+        static_cast<uint8_t>((code >> 4) & 0xF),
+        static_cast<uint8_t>(code & 0xF),
+    };
+
+    // Eye-tracking clients (Baballonia et al.) crop/zoom this frame toward whatever they guess
+    // is the pupil, so a single centered label isn't reliable - it can land almost anywhere,
+    // rotated or clipped, and blow up into an unreadable blob.
+    // Tile small instances of the code across the frame in a grid, each at a different 90-degree
+    // rotation, so whatever crop/rotation the client applies, at least one instance lands both
+    // inside the crop window AND right-side-up.
+    constexpr int scale = 3;  // pixels per font cell
+    constexpr int labelPxW = GRID_W * scale;
+    constexpr int labelPxH = GRID_H * scale;
+    // Max footprint across all 4 rotations is a square of the longer dimension, so every tile
+    // gets the same amount of clearance regardless of which rotation lands there.
+    constexpr int cellSpan = (labelPxW > labelPxH ? labelPxW : labelPxH);
+    constexpr int centerXs[3] = {14 + cellSpan / 2, FRAME_DIM / 2, FRAME_DIM - 14 - cellSpan / 2};
+    constexpr int centerYs[3] = {14 + cellSpan / 2, FRAME_DIM / 2, FRAME_DIM - 14 - cellSpan / 2};
+
+    int rotation = 0;
+    for (int cy : centerYs)
+    {
+        for (int cx : centerXs)
+        {
+            const bool swapped = (rotation & 1) != 0;  // 90/270 swap the bounding box's W/H
+            const int w = swapped ? labelPxH : labelPxW;
+            const int h = swapped ? labelPxW : labelPxH;
+            drawLabelRotated(raw, cx - w / 2, cy - h / 2, scale, rotation, nibbles);
+            rotation = (rotation + 1) & 0x3;
+        }
+    }
+
+    // Thin border so it's obviously a diagnostic card rather than a corrupted stream frame.
+    fillRect(raw, 0, 0, FRAME_DIM, 4, FG_SHADE);
+    fillRect(raw, 0, FRAME_DIM - 4, FRAME_DIM, FRAME_DIM, FG_SHADE);
+    fillRect(raw, 0, 0, 4, FRAME_DIM, FG_SHADE);
+    fillRect(raw, FRAME_DIM - 4, 0, FRAME_DIM, FRAME_DIM, FG_SHADE);
+
+    uint8_t* jpegOut = nullptr;
+    size_t jpegLen = 0;
+    const bool ok = fmt2jpg(raw, (size_t)FRAME_DIM * FRAME_DIM, FRAME_DIM, FRAME_DIM, PIXFORMAT_GRAYSCALE, 30, &jpegOut, &jpegLen);
+    free(raw);
+
+    if (!ok)
+    {
+        ESP_LOGE(CAMERA_MANAGER_TAG, "Failed to encode diagnostic frame to JPEG");
+        return;
+    }
+
+    diagnosticJpegBuf = jpegOut;
+    diagnosticJpegLen = jpegLen;
+    ESP_LOGI(CAMERA_MANAGER_TAG, "Generated diagnostic frame for error 0x%03lx (%u bytes)", (unsigned long)code, (unsigned)jpegLen);
 }

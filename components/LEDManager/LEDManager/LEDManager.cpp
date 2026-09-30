@@ -110,14 +110,12 @@ void LEDManager::displayCurrentPattern()
 
 void LEDManager::updateState(const LEDStates_e newState)
 {
-    // If we've got an error state - that's it, keep repeating it indefinitely
-    if (ledStateMap[this->currentState].isError)
+    // Error states are sticky against other errors (so e.g. a WiFi hiccup can't paper over a
+    // camera fault) but must still be clearable by a genuine recovery - CameraManager's retry
+    // task can bring the camera back on its own, and the LED needs to reflect that instead of
+    // showing CameraError forever after it already recovered.
+    if (ledStateMap[this->currentState].isError && ledStateMap[newState].isError)
         return;
-
-    // Alternative (recoverable error states):
-    // Allow recovery from error states by only blocking transitions when both, current and new states are error. Uncomment to enable recovery.
-    // if (ledStateMap[this->currentState].isError && ledStateMap[newState].isError)
-    //     return;
 
     // Only update when new state differs and is known.
     if (!ledStateMap.contains(newState))

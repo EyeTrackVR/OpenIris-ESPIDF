@@ -62,7 +62,7 @@ auto wifiManager = std::make_shared<WiFiManager>(deviceConfig, eventQueue, state
 MDNSManager mdnsManager(deviceConfig, eventQueue);
 
 std::shared_ptr<CameraManager> cameraHandler = std::make_shared<CameraManager>(deviceConfig, eventQueue);
-StreamServer streamServer(80, stateManager);
+StreamServer streamServer(80, stateManager, cameraHandler);
 
 std::shared_ptr<RestAPI> restAPI = std::make_shared<RestAPI>("http://0.0.0.0:81", commandManager);
 
@@ -282,6 +282,7 @@ extern "C" void app_main(void)
     xTaskCreate(HandleLEDDisplayTask, "HandleLEDDisplayTask", 1024 * 2, ledManager.get(), 3, nullptr);
 
     cameraHandler->setupCamera();
+    cameraHandler->startAutoRetry();
 
     // let's keep the serial manager running for the duration of the setup
     // we'll clean it up later if need be
