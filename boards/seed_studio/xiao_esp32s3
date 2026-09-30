@@ -2,7 +2,16 @@ CONFIG_IDF_TARGET="esp32s3"
 CONFIG_IDF_TARGET_ESP32S3=y
 CONFIG_LED_DEBUG_GPIO=21
 CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
-CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240=y
+# CPU at 160MHz instead of the 240MHz in sdkconfig.base_defaults, to cut heat.
+# ESP_DEFAULT_CPU_FREQ_MHZ* are the authoritative symbols; the ESP32S3_* names are legacy
+# aliases. switchBoardType.py merges base and board configs by exact key, so the 240 entries
+# have to be turned off explicitly here - omitting them just leaves the base values in place.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=n
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_160=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ=160
+CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240=n
+CONFIG_ESP32S3_DEFAULT_CPU_FREQ_160=y
+CONFIG_ESP32S3_DEFAULT_CPU_FREQ_MHZ=160
 CONFIG_ESP32S3_SPIRAM_SUPPORT=y
 CONFIG_SPIRAM_MODE_OCT=y
 # CONFIG_ESPTOOLPY_FLASHSIZE_1MB is not set

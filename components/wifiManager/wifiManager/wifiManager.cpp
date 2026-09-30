@@ -26,9 +26,10 @@ void WiFiManagerHelpers::event_handler(void* arg, esp_event_base_t event_base, i
 
         if (s_retry_num < EXAMPLE_ESP_MAXIMUM_RETRY)
         {
+            vTaskDelay(pdMS_TO_TICKS(WIFI_RETRY_BACKOFF_MS));
             esp_wifi_connect();
             s_retry_num++;
-            ESP_LOGI(WIFI_MANAGER_TAG, "retry to connect to the AP");
+            ESP_LOGI(WIFI_MANAGER_TAG, "retry %d/%d to connect to the AP", s_retry_num, EXAMPLE_ESP_MAXIMUM_RETRY);
         }
         else
         {
@@ -49,6 +50,27 @@ void WiFiManagerHelpers::event_handler(void* arg, esp_event_base_t event_base, i
 WiFiManager::WiFiManager(std::shared_ptr<ProjectConfig> deviceConfig, QueueHandle_t eventQueue, StateManager* stateManager)
     : deviceConfig(deviceConfig), eventQueue(eventQueue), stateManager(stateManager), wifiScanner(std::make_unique<WiFiScanner>())
 {
+}
+
+void WiFiManager::ApplyTxPower()
+{
+    // esp_wifi_set_max_tx_power only takes effect once the driver is started - calling it
+    // before esp_wifi_start() is silently ignored. Units are 0.25dBm, valid range 8-84.
+    uint8_t configured = this->deviceConfig->getWiFiTxPowerConfig().power;
+    if (configured < 8)
+        configured = 8;
+    if (configured > 84)
+        configured = 84;
+
+    if (const auto err = esp_wifi_set_max_tx_power(static_cast<int8_t>(configured)); err != ESP_OK)
+    {
+        ESP_LOGW(WIFI_MANAGER_TAG, "Failed to set TX power to %u: %s", configured, esp_err_to_name(err));
+        return;
+    }
+
+    int8_t applied = 0;
+    esp_wifi_get_max_tx_power(&applied);
+    ESP_LOGI(WIFI_MANAGER_TAG, "TX power set to %d (%d.%02d dBm)", applied, applied / 4, (applied % 4) * 25);
 }
 
 std::vector<uint8_t> WiFiManager::ParseBSSID(std::string_view bssid_string)
@@ -108,8 +130,10 @@ void WiFiManager::SetCredentials(const char* ssid, const std::vector<uint8_t> bs
     _wifi_cfg.sta.pmf_cfg.capable = false;
     _wifi_cfg.sta.pmf_cfg.required = false;
 
-    // OPTIMIZATION: Use fast scan instead of all channel scan for quicker connection
-    _wifi_cfg.sta.scan_method = WIFI_FAST_SCAN;
+    // IMPORTANT: Must be ALL_CHANNEL_SCAN for sort_method below to take effect. WIFI_FAST_SCAN
+    // stops at the first SSID match, so on a mesh/repeater network it latches onto whichever
+    // node answers the probe first - often a distant one - and association becomes a coin flip.
+    _wifi_cfg.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
     _wifi_cfg.sta.bssid_set = use_bssid;  // Don't use specific BSSID
     _wifi_cfg.sta.channel = 0;            // Auto channel detection
 
@@ -144,12 +168,14 @@ void WiFiManager::ConnectWithHardcodedCredentials()
 
     xQueueSend(this->eventQueue, &event, 10);
     esp_wifi_start();
+    this->ApplyTxPower();
 
     event.value = WiFiState_e::WiFiState_Connecting;
     xQueueSend(this->eventQueue, &event, 10);
 
-    // Use shorter timeout for faster startup - 8 seconds should be enough for most networks
-    EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdFALSE, pdFALSE, pdMS_TO_TICKS(8000));
+    // Budget must cover EXAMPLE_ESP_MAXIMUM_RETRY attempts: an all-channel scan costs ~2-3s per
+    // attempt, so timing out earlier than that abandons retries that were about to succeed.
+    EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdFALSE, pdFALSE, pdMS_TO_TICKS(18000));
 
     /* xEventGroupWaitBits() returns the bits before the call returned, hence we can test which event actually
      * happened. */
@@ -216,12 +242,13 @@ void WiFiManager::ConnectWithStoredCredentials()
             ESP_LOGE(WIFI_MANAGER_TAG, "Failed to start WiFi: %s", esp_err_to_name(start_err));
             continue;
         }
+        this->ApplyTxPower();
 
         event.value = WiFiState_e::WiFiState_Connecting;
         xQueueSend(this->eventQueue, &event, 10);
 
         EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdFALSE, pdFALSE,
-                                               pdMS_TO_TICKS(10000));  // 10 second timeout for faster failover
+                                               pdMS_TO_TICKS(18000));  // must cover all retries, see ConnectWithHardcodedCredentials
         if (bits & WIFI_CONNECTED_BIT)
         {
             ESP_LOGI(WIFI_MANAGER_TAG, "connected to ap SSID:%s", network.ssid.c_str());

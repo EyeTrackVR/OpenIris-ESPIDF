@@ -16,7 +16,10 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#define EXAMPLE_ESP_MAXIMUM_RETRY 3
+#define EXAMPLE_ESP_MAXIMUM_RETRY 5
+// Spacing between reconnect attempts. Retrying with no gap burns the whole retry budget in
+// under a second, which is not enough time for a busy or distant AP to answer.
+#define WIFI_RETRY_BACKOFF_MS 300
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
 
@@ -41,6 +44,7 @@ class WiFiManager
 
     int8_t power;
 
+    void ApplyTxPower();
     void SetCredentials(const char* ssid, const std::vector<uint8_t> bssid, const char* password, bool use_bssid);
     void ConnectWithHardcodedCredentials();
     void ConnectWithStoredCredentials();

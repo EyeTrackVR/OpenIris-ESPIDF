@@ -48,8 +48,18 @@ void CameraManager::setupCameraPinout()
     ESP_LOGI(CAMERA_MANAGER_TAG, "CAM_BOARD");
 #endif
 #if CONFIG_GENERAL_INCLUDE_UVC_MODE
-    xclk_freq_hz = CONFIG_CAMERA_USB_XCLK_FREQ;
+    // Pick the clock from the mode the device will actually run in, not from whether UVC
+    // support happens to be compiled in. Choosing at compile time meant every build with
+    // UVC enabled ran the sensor at the USB clock even in WiFi mode, which left
+    // CAMERA_WIFI_XCLK_FREQ dead. Mode is loaded before streaming starts, and switching
+    // modes already requires a reboot, so this is settled by the time the camera comes up.
+    if (projectConfig->getDeviceMode() == StreamingMode::UVC)
+    {
+        xclk_freq_hz = CONFIG_CAMERA_USB_XCLK_FREQ;
+    }
 #endif
+
+    ESP_LOGI(CAMERA_MANAGER_TAG, "[Camera]: XCLK set to %d Hz", xclk_freq_hz);
 
     config = {
         .pin_pwdn = CONFIG_PWDN_GPIO_NUM,      // CAM_PIN_PWDN,
